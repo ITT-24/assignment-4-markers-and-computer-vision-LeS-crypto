@@ -185,17 +185,17 @@ while True:
     # (see: https://docs.opencv.org/4.x/d4/d73/tutorial_py_contours_begin.html)
         # "object to be found should be white and background should be black"
     # (see: https://www.geeksforgeeks.org/find-and-draw-contours-using-opencv-python/)
-    contours, hierarchy = cv2.findContours(canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, hierarchy = cv2.findContours(canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     cv2.drawContours(frame, contours, -1, (0, 255, 0), 2)
 
     # draw bounding box (see: https://stackoverflow.com/a/23411041)
-    # for c in contours:
+    for c in contours:
         # get points furtherst to right/left
-        # rect = cv2.boundingRect(c)
-        # if rect[2] < 100 or rect[3] < 100: continue
-        # x,y,w,h = rect
-        # cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
-        # cv2.putText(frame,'Moth Detected',(x+w+10,y+h),0,0.3,(0,255,0))
+        rect = cv2.boundingRect(c)
+        if rect[2] < 100 or rect[3] < 100: continue
+        x,y,w,h = rect
+        cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
+        cv2.putText(frame,'Hand Detected',(x+w+10,y+h),0,0.3,(0,255,0))
     
     # get two righ/left most points
 
