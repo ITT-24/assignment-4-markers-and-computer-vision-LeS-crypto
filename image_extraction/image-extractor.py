@@ -2,25 +2,7 @@ import cv2
 import argparse
 import numpy as np
 from datetime import datetime
-
-"""
-- load & display image (with opencv)
-- click image to select 4 points
-    - selected region is extracted and warped to a rectangle
-    - display result
-- ESC = discard changes + start over (= old image)
-- S   = saves the image (in result view)
-- CMD Line Params:
-    - Path to input file
-    - Path to output destination
-    - resolution of image result
-
-- [x] - (1P) The image is successfully loaded and displayed.
-- [x] - (1P) Selecting the corner points works and there is visual feedback for the user.
-- [x] - (2P) Perspective transformation to the target resolution works.
-- [x] - (1P) Command line parameters and shortcuts work.
-"""
-# TODO: test
+import os
 
 WINDOW_NAME = "Image Extractor"
 
@@ -53,7 +35,7 @@ def parse_cmd_input():
                         help="""The path to the image file you want to use. 
                             Defaults to the included 'sample_image.jpg' in the current folder""")
     parser.add_argument('-d', '--destination', type=str, metavar='',
-                        default=None, # ?? current directory
+                        default=None,
                         required=False,
                         action="store",
                         help="""The path to the directory you want to save your result image in.
@@ -67,7 +49,6 @@ def parse_cmd_input():
                             Defaults to the same resolution as the source image.""")
     
     args = parser.parse_args()
-    print(args)
 
     if args.source:
         source = args.source
@@ -92,18 +73,23 @@ class Extractor():
         self.resolution = resolution
         self.clicks = []
 
-        # read and display image
-        self.img = cv2.imread(source)
-        cv2.namedWindow(WINDOW_NAME)
-        
-        cv2.setMouseCallback(WINDOW_NAME, self.mouse_callback)
+        # read and display image (if possible)
 
-        pass
+        if not os.path.isfile(source):
+            print(f"[FILE_NOT_FOUND]: {source} \n -> Is the name correct?")
+            exit(0)
+            # see: https://stackoverflow.com/a/30406561
+    
+        self.img = cv2.imread(source)
+
+        cv2.namedWindow(WINDOW_NAME)
+        cv2.setMouseCallback(WINDOW_NAME, self.mouse_callback)
 
     def show_window(self):
         cv2.imshow(WINDOW_NAME, self.img)
 
     def mouse_callback(self, event, x, y, flags, params):
+        """Allow 4 mouse clicks before transformation is doen"""
         # see: opencv_click.py
         global img
 
@@ -120,21 +106,17 @@ class Extractor():
         """Transforms the image to the specified resolution (default = same res as source)"""
 
         img = cv2.imread(source) # read img again/ or copy to remove point markers
-        # img = self.img.copy()
 
         if self.resolution == None:
             self.resolution = [self.img.shape[0], self.img.shape[1]]
-            print("saveing with original resolution", self.resolution)
-
+            print("saving with original resolution", self.resolution)
 
         # TRANSFORMATION - see: transformation.ipynb
         old_points = np.float32(np.array(self.clicks))
-        # np.float32(np.array([[200, 200], [1700, 400], [1300, 1000], [ 400, 900]]))
         res = self.resolution
         height = res[0]
         width = res[1]
         new_points = np.float32(np.array([ [0, 0], [width, 0], [width, height], [0, height] ]))
-        # destination = np.float32(np.array([[0, 0], [WIDTH, 0], [WIDTH, HEIGHT], [0, HEIGHT]]))
 
         matrix = cv2.getPerspectiveTransform(old_points, new_points )
         self.img = cv2.warpPerspective(img, matrix, (width, height))
@@ -149,7 +131,7 @@ class Extractor():
 
     def reset_image(self):
         """Rereads the image into the application"""
-
+        
         self.img = cv2.imread(source)
         self.clicks = [] # reset
         print("resetting image")
@@ -161,17 +143,19 @@ class Extractor():
         New filename includes a simple identifier to not override things
         """
         
-        identifier = f"{datetime.now().minute}-{datetime.now().second}" # to not override imgs
+        identifier = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         filename = f"extr_{identifier}_{self.source}"
         filepath = None
         if self.destination == None:
             filepath = filename
         else: 
             filepath= f"{self.destination}/{filename}"
-        print("saveing image to", filepath)
         has_saved = cv2.imwrite(filepath, self.img)
-        print(has_saved)
-
+        print("saving image to", filepath, "->", has_saved)
+        if not has_saved:
+            print("...something went wrong here D:")
+        else:
+            print("Save successfull!!\nPress 'q' to quit or 'esc' to reset.")
 
 
 # ----- RUN ----- #
