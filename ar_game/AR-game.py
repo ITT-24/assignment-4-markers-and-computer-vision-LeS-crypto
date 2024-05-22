@@ -7,26 +7,6 @@ from PIL import Image
 import sys
 import random
 
-"""
-- read out webcam image
-- extract region btw. AruCo markers (on board)
-    - & transform to rectangle with same resolution as webcam (any)
-- display image in pyglet app
-- create game
-    - game mechanics include hand gestures (to destoy targets or move things)
-    - i.e. detect hand/fingers (e.g. contrast/color-diff)
-
-- [ ] - (2P) The region of interest is detected, extracted, transformed, and displayed.
-- [ ] - (4P) Objects (such as fingers) in the region of interest are tracked reliably and interaction with game objects works.
-- [ ] - (2P) Game mechanics work and (kind of) make sense.
-- [ ] - (1P) Performance is ok.
-- [ ] - (1P) The program does not crash   
-
-IDEA: draw with palm/pointer finger 
-IDEA: eat enemies with hand (just point at it)
-IDEA: create sliders to adjust detection
-"""
-
 WINDOW_WIDTH = 640
 WINDOW_HEIGHT = 480
 window = pyglet.window.Window(WINDOW_WIDTH, WINDOW_HEIGHT)
@@ -36,12 +16,18 @@ OFFSET = 20
 score = pyglet.text.Label(text="Score: 0", x=OFFSET, y=WINDOW_HEIGHT-OFFSET,
                           color=(0, 0, 0, 255), batch=shape_batch)
 
+
+crosshair_img = pyglet.image.load("crosshair-red.png") # source: see README.md
+crosshair_img.anchor_x = crosshair_img.width // 2
+crosshair_img.anchor_y = crosshair_img.height // 2
+
 MAX_ENEMY_COUNT = 5
-HAND_RADIUS = 50
+HAND_RADIUS = 25
 HAND_COLOR = (0, 100, 255, 80)
 ENEMY_SIZE = 20
 SPEED = 10
-ENEMY_COLOR = (255, 0, 0)
+ENEMY_COLOR = (144, 243, 255)
+CONTOUR_TRHESHOLD = 3000
 
 # INIT VIDEO FEED
 video_id = 0
@@ -72,7 +58,7 @@ def cv2glet(img,fmt):
                                    fmt=fmt, 
                                    data=raw_img, 
                                    pitch=top_to_bottom_flag*bytes_per_row)
-    window.set_size(width=cols, height=rows) #??
+    window.set_size(width=cols, height=rows) 
     return pyimg
 
 
@@ -103,7 +89,6 @@ class Playfield():
         # id's should always be in the same place, but arent detected like that
         
         if len(ids) == 4 and (marker_ids == ids).all():
-            # print("found all markers")
             c = corners
 
             # store ids of the playfield in the right order
@@ -120,7 +105,7 @@ class Playfield():
             # get to top_l/bot_r corners using min/max
             idx_top_l = np.argmin(np.sum(ms, axis=1))
             idx_bot_r = np.argmax(np.sum(ms, axis=1))
-            # print("?", ms, "\n-->", idx_top_l, idx_bot_r)
+
             box[0] = idx_top_l
             box[2] = idx_bot_r
 
@@ -143,19 +128,18 @@ class Playfield():
 
             box[1] = idx_top_r
             box[3] = idx_bot_l
-            # print("BOX:", box)
             
             # get coordinates of outside corners and arrange
-            top_l = [c[box[0]][0][0][0], c[box[0]][0][0][1]]
-            top_r = [c[box[1]][0][1][0], c[box[1]][0][1][1]]
-            bot_l = [c[box[2]][0][2][0], c[box[2]][0][2][1]] # id:2
-            bot_r = [c[box[3]][0][3][0], c[box[3]][0][3][1]]
+            top_l = [c[box[0]][0][2][0], c[box[0]][0][2][1]]
+            top_r = [c[box[1]][0][3][0], c[box[1]][0][3][1]]
+            bot_l = [c[box[2]][0][0][0], c[box[2]][0][0][1]] # id:2
+            bot_r = [c[box[3]][0][1][0], c[box[3]][0][1][1]]
             self.prev_transform = np.float32(np.array([top_l, top_r, bot_r, bot_l]))
 
             """
-            m0= °[0] ----- [1]° =m1
-                  |         |
-            m3= .[3] ----- [2]. =m2
+            m0= [0]. ----- .[1] =m1
+                 |           |
+            m3= [3]° ----- °[2]. =m2
             """
 
         # keep the transformation if not all markers have been reliably found
@@ -178,19 +162,18 @@ class Game():
 
     def __init__(self):
         self.enemies = []
-        self.finger = pyglet.shapes.Circle(0, 0, HAND_RADIUS,
-                                         color=HAND_COLOR, batch=shape_batch)
+        self.finger = pyglet.sprite.Sprite(crosshair_img, batch=shape_batch)
+        self.finger.width = HAND_RADIUS * 2
+        self.finger.height = HAND_RADIUS * 2
+        # self.finger = pyglet.shapes.Circle(0, 0, HAND_RADIUS,
+        #                                  color=HAND_COLOR, batch=shape_batch)
         self.score = 0
 
-    # TODO:
-        # Detect hand -> then detect pointer and thumb
-        # Draw circle at those positions to indicate + use them for detection
     def detect_hand(self, frame):
         """
         Detect the hand and it's area to use for collision
         See also: hand_detect.py (testing ground for cv2 detection)
         """
-        # print("now detecting hand")
 
         # make the contrast bigger to "wash out" lighter areas
         # see: https://docs.opencv.org/4.x/d3/dc1/tutorial_basic_linear_transform.html
@@ -236,36 +219,23 @@ class Game():
         # see: https://pyimagesearch.com/2016/04/11/finding-extreme-points-in-contours-with-opencv/
         if contours != (): # max() iterable element is empty
             c = max(contours, key=cv2.contourArea)
+            if np.sum(c) > CONTOUR_TRHESHOLD:
+                # to make a little less jittery
 
             # determine the most extreme points along the contour
-            extLeft  = tuple(c[c[:, :, 0].argmin()][0])
-            extRight = tuple(c[c[:, :, 0].argmax()][0])
-            extTop   = tuple(c[c[:, :, 1].argmin()][0])
-            extBot   = tuple(c[c[:, :, 1].argmax()][0])
-            
-            # determine from which direction the hand is coming 
-            # the higher (y) point should be the pointer finger
-            if extRight[0] > extLeft [0]:
-                x = extRight[0]
-                y = extRight[1]
-            else:
-                x = extLeft[0]
-                y = extLeft[1]
+                extTop   = tuple(c[c[:, :, 1].argmin()][0])
+                # extLeft  = tuple(c[c[:, :, 0].argmin()][0])
+                # extRight = tuple(c[c[:, :, 0].argmax()][0])
+                # extBot   = tuple(c[c[:, :, 1].argmax()][0])
 
-            # rect = cv2.boundingRect(c)
-            # x,y,w,h = rect
-            # x = x + (w/2)
-            # y = y + (h/2) 
+                x = extTop[0]
+                y = extTop[1]
         else:
             x = self.finger.x 
             y = self.finger.y 
 
-        # move the marker for the pointer-finger
-        # only if difference is big (so less jitter)
-        # if np.abs(x-self.finger.x) > 10 and abs(y-self.finger.y) > 10:
         self.finger.x = x
-        self.finger.y = WINDOW_HEIGHT - y
-        # self.finger.radius = (w+h)/2
+        self.finger.y = WINDOW_HEIGHT - y # bc. of diff coord system
 
 
     def create_enemy(self, delta_time):
@@ -296,7 +266,7 @@ class Game():
         f_y = self.finger.y
 
         distance = self.measure_distance(enemy.x, enemy.y, f_x, f_y)
-        if distance < self.finger.radius:
+        if distance < HAND_RADIUS:
             self.update_score()
             self.enemies.remove(enemy)
 
@@ -339,6 +309,10 @@ def on_draw():
 clock.schedule_interval(game.create_enemy, 2)
 clock.schedule_interval(game.update_enemies, 0.1)
 
+@window.event
+def on_key_press(symbol, modifiers):
+    if symbol == pyglet.window.key.Q:
+        window.close()
 
 # ----- RUN ----- #
 
