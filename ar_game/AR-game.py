@@ -215,6 +215,10 @@ class Game():
         # (see: https://www.geeksforgeeks.org/find-and-draw-contours-using-opencv-python/)
         contours, _ = cv2.findContours(canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+        # AS: crashes if x/y are not initialized
+        x = 0
+        y = 0
+
         # get two righ/left most points
         # see: https://pyimagesearch.com/2016/04/11/finding-extreme-points-in-contours-with-opencv/
         if contours != (): # max() iterable element is empty

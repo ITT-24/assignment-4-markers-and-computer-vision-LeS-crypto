@@ -150,6 +150,7 @@ class Extractor():
             filepath = filename
         else: 
             filepath= f"{self.destination}/{filename}"
+        # AS: should create destination directory if it does not exist
         has_saved = cv2.imwrite(filepath, self.img)
         print("saving image to", filepath, "->", has_saved)
         if not has_saved:
